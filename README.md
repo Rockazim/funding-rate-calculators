@@ -12,6 +12,6 @@ These calculators access the exchange API or coinanaylze to get the last 3 days 
 To make an API key on Bybit go to -> https://www.bybit.com/app/user/api-management
 To make a coinalyze API key go to -> https://coinalyze.net/account/api-key/
 
-These calculators will return via a .txt file and they will be sorted in highest to lowest. Please reach out if there are any issues @https://x.com/quantzim
+These calculators will return via a .txt file and they will be sorted from highest to lowest. Please reach out if there are any issues @https://x.com/quantzim
 
 Remember you will need to be short if funding is positive and long if funding is negative.
