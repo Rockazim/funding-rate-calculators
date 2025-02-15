@@ -1,74 +1,88 @@
 import requests
 import time
 
-# Define your API key and the base URL
-api_key = "Put your key here"  # Replace with your actual Coinalyze API key
-base_url = "https://api.coinalyze.net/v1"
-headers = {"api_key": api_key}
+# Hyperliquid endpoint and headers
+url_info = "https://api.hyperliquid.xyz/info"
+headers = {"Content-Type": "application/json"}
 
-# Set the time range for the past 3 days
-end_time = int(time.time())
-start_time = end_time - (3 * 24 * 60 * 60)  # 3 days in seconds
-
-# Retrieve perpetual tickers for Hyperliquid
-url_future_markets = f"{base_url}/future-markets"
+# ---------------------------
+# 1. Retrieve Perpetual Meta Data
+# ---------------------------
+meta_payload = {"type": "meta"}
 try:
-    response = requests.get(url_future_markets, headers=headers)
-    response.raise_for_status()
-    future_markets = response.json()
-    symbols = [
-        market['symbol'] for market in future_markets
-        if market['exchange'] == "H" and market['is_perpetual'] == True
-    ]
+    meta_response = requests.post(url_info, json=meta_payload, headers=headers)
+    meta_response.raise_for_status()
+    meta_data = meta_response.json()
+    universe = meta_data.get("universe", [])
+    if not universe:
+        print("No perpetual metadata found.")
+        exit()
 except Exception as e:
-    print(f"Failed to retrieve markets: {e}")
+    print(f"Failed to retrieve perpetual metadata: {e}")
     exit()
 
-# Prepare to retrieve funding rate history
-url_funding_rate = f"{base_url}/funding-rate-history"
+# Build a list of available coins and print their asset IDs (index in the universe)
+coins = []
+for idx, coin_info in enumerate(universe):
+    coin_name = coin_info.get("name")
+    # Optionally skip delisted coins (they are not available for trading)
+    if coin_info.get("isDelisted", False):
+        continue
+    coins.append(coin_name)
+
+# Set the time range for the past 3 days (timestamps in milliseconds)
+end_time_ms = int(time.time() * 1000)
+start_time_ms = end_time_ms - (3 * 24 * 60 * 60 * 1000)
+
 average_funding_rates = []
 
-# Process each symbol
-for i, symbol in enumerate(symbols):
-    params = {
-        "symbols": symbol,
-        "interval": "1hour",
-        "from": start_time,
-        "to": end_time
+for i, coin in enumerate(coins):
+    funding_payload = {
+        "type": "fundingHistory",
+        "coin": coin,
+        "startTime": start_time_ms,
+        "endTime": end_time_ms
     }
-    try:
-        response = requests.get(url_funding_rate, headers=headers, params=params)
-        response.raise_for_status()
-        data = response.json()
-        
-        # Extract 'c' (close) values from the history, assuming it represents the funding rate
-        rates = [entry['c'] for entry in data[0]['history'] if 'c' in entry]
-        
-        if len(rates) == 72:  # Only process if we have the required 72 data points
-            avg_rate = sum(rates) / 3  # Sum and divide by 3 to get the 3-day average
-            average_funding_rates.append((symbol, avg_rate))
-        else:
-            print(f"Skipping {symbol} due to insufficient data points")
 
-    except requests.exceptions.HTTPError as err:
-        if response.status_code == 429:
-            print("Rate limit exceeded. Waiting before retrying...")
-            time.sleep(60)  # Wait for a minute before retrying to avoid rate limit
+    try:
+        response = requests.post(url_info, json=funding_payload, headers=headers)
+        response.raise_for_status()
+        data = response.json()  # Expecting a list of funding history entries
+
+        # Extra validation: sort the data by timestamp
+        data.sort(key=lambda x: x.get("time", 0))
+
+        # Validate that each entry's timestamp is within the expected range
+        for entry in data:
+            timestamp = entry.get("time")
+            if timestamp < start_time_ms or timestamp > end_time_ms:
+                print(f"Warning for {coin}: entry with timestamp {timestamp} is outside the requested range.")
+
+        # Extract fundingRate values and convert them from string to float
+        rates = [float(entry["fundingRate"]) for entry in data if "fundingRate" in entry]
+
+        # Expect 72 data points for 3 days of hourly data.
+        if len(rates) == 72:
+            # The original logic sums all hourly rates and divides by 3 to compute a daily average.
+            avg_rate = sum(rates) / 3
+            average_funding_rates.append((coin, avg_rate * 100))
         else:
-            print(f"Failed to retrieve funding rate for {symbol}: {err}")
+            print(f"Skipping {coin}: insufficient data points ({len(rates)} found)")
+
+    except requests.exceptions.HTTPError as http_err:
+        if response.status_code == 429:
+            print("Rate limit exceeded. Waiting 60 seconds before retrying...")
+            time.sleep(60)
+        else:
+            print(f"HTTP error occurred for {coin}: {http_err}")
     except Exception as e:
-        print(f"An error occurred for {symbol}: {e}")
-    
-    # Introduce a delay after each request to manage rate limiting
+        print(f"An error occurred for {coin}: {e}")
+
+    # Small delay every 10 requests to avoid rate limiting
     if (i + 1) % 10 == 0:
         time.sleep(1.5)
 
-# Sort by funding rate in descending order
 sorted_rates = sorted(average_funding_rates, key=lambda x: x[1], reverse=True)
 
-# Write results to "hyperliquidrates.txt"
-with open("hyperliquidrates.txt", "w") as file:
-    for symbol, avg_rate in sorted_rates:
-        file.write(f"{symbol}: {avg_rate}\n")
-
-print("Funding rates have been written to 'hyperliquidrates.txt'.")
+for coin, avg_rate in sorted_rates:
+    print(f"{coin}: {avg_rate}%\n")
