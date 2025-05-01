@@ -10,7 +10,6 @@ HTX: https://www.htx.com/en-us/v/register/double-invite/web/?inviter_id=11345710
 These calculators access the exchange API or coinanaylze to get the last 3 days of funding and getting the average over these 3 days. For Bybit and Hyperliquid you will need to make API keys. 
 
 To make an API key on Bybit go to -> https://www.bybit.com/app/user/api-management
-To make a coinalyze API key go to -> https://coinalyze.net/account/api-key/
 
 These calculators will return via a .txt file and they will be sorted from highest to lowest. Please reach out if there are any issues @https://x.com/quantzim
 
